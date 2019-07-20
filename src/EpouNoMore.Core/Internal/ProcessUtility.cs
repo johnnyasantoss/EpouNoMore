@@ -2,9 +2,9 @@ using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 
-namespace EpouNoMore.Core
+namespace EpouNoMore.Core.Internal
 {
-    public class ProcessUtility
+    internal class ProcessUtility
     {
         public static ProcessUtility Instance { get; } = new ProcessUtility();
 

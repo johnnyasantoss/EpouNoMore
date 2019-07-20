@@ -1,10 +1,10 @@
 using System;
 using System.IO;
 
-namespace EpouNoMore.Core
+namespace EpouNoMore.Core.Internal
 {
     // ReSharper disable once InconsistentNaming
-    public static class IOUtility
+    internal static class IOUtility
     {
         public static string GetRandomTempPath()
         {
