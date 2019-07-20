@@ -15,6 +15,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = ".", ".", "{14D0BA8E-768C-4F
 ProjectSection(SolutionItems) = preProject
 	README.md = README.md
 	global.json = global.json
+	.editorconfig = .editorconfig
+	.gitignore = .gitignore
 EndProjectSection
 EndProject
 Global
