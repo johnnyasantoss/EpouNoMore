@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -15,14 +16,16 @@ using Window = Gtk.Window;
 
 namespace EpouNoMore.UI.GTK
 {
+    [SuppressMessage("ReSharper", "FieldCanBeMadeReadOnly.Local")]
     class MainWindow : Window
     {
-        [Builder.ObjectAttribute] private Button btnBackup = null;
-        [Builder.ObjectAttribute] private Button btnClearBackup = null;
-        [Builder.ObjectAttribute] private Spinner spinnerBackup = null;
-        [Builder.ObjectAttribute] private Switch fullBackupSwitch = null;
-        [Builder.ObjectAttribute] private FileChooserButton folderChooser = null;
-        [Builder.ObjectAttribute] private TextBuffer textBufferBackup = null;
+        [Builder.ObjectAttribute] private Button _btnBackup = null;
+        [Builder.ObjectAttribute] private Button _btnClearBackup = null;
+        [Builder.ObjectAttribute] private Spinner _spinnerBackup = null;
+        [Builder.ObjectAttribute] private Switch _fullBackupSwitch = null;
+        [Builder.ObjectAttribute] private FileChooserButton _folderChooser = null;
+        [Builder.ObjectAttribute] private TextBuffer _textBufferBackup = null;
+        [Builder.ObjectAttribute] private TextView _textViewBackup = null;
 
         private readonly Logger<MainWindow> _logger;
         private readonly string _lineSeparator;
@@ -36,7 +39,7 @@ namespace EpouNoMore.UI.GTK
         {
         }
 
-        private MainWindow(Builder builder) : base(builder.GetObject("MainWindow").Handle)
+        private MainWindow(Builder builder) : base(builder.GetObject("_mainWindow").Handle)
         {
             builder.Autoconnect(this);
 
@@ -46,12 +49,28 @@ namespace EpouNoMore.UI.GTK
 
             SetDefaultFolderBackup();
 
-            btnBackup.Clicked += BtnBackupClicked;
-            btnClearBackup.Clicked += BtnClearBackupClicked;
+            _btnBackup.Clicked += BtnBackupClicked;
+            _btnClearBackup.Clicked += BtnClearBackupClicked;
 
             DeleteEvent += Window_DeleteEvent;
             _lineSeparator = string.Join(string.Empty, Enumerable.Repeat("-", 50)) +
                              Environment.NewLine;
+
+            _textBufferBackup.InsertText += delegate
+            {
+                RunOnMainThread(
+                    Priority.HighIdle
+                    , () =>
+                    {
+                        _textViewBackup.ScrollToMark(
+                            _textBufferBackup.InsertMark
+                            , 0
+                            , true
+                            , 0
+                            , 1
+                        );
+                    });
+            };
         }
 
         private void SetDefaultFolderBackup()
@@ -63,7 +82,7 @@ namespace EpouNoMore.UI.GTK
                 if (!Directory.Exists(defaultBackupFolder))
                     Directory.CreateDirectory(defaultBackupFolder);
 
-                folderChooser.SetCurrentFolder(defaultBackupFolder);
+                _folderChooser.SetCurrentFolder(defaultBackupFolder);
             }
             catch (Exception e)
             {
@@ -80,8 +99,8 @@ namespace EpouNoMore.UI.GTK
         private void ResetTextBufferBackup()
         {
             _logger.Info("Cleaning backup text view...");
-            textBufferBackup.Clear();
-            textBufferBackup.Text = "Waiting for your backup..." + Environment.NewLine;
+            _textBufferBackup.Clear();
+            _textBufferBackup.Text = "Waiting for your backup..." + Environment.NewLine;
         }
 
         private void Window_DeleteEvent(object sender, DeleteEventArgs a)
@@ -91,41 +110,41 @@ namespace EpouNoMore.UI.GTK
 
         private async void BtnBackupClicked(object sender, EventArgs a)
         {
-            btnBackup.Sensitive = false;
-            ToggleBackupSpinner(spinnerBackup);
+            _btnBackup.Sensitive = false;
+            ToggleBackupSpinner(_spinnerBackup);
 
             var (isValid, destPathOrMsg) = GetDestPath();
 
             if (!isValid)
             {
-                textBufferBackup.InsertAtCursor(_lineSeparator);
-                textBufferBackup.InsertAtCursor(destPathOrMsg);
+                _textBufferBackup.InsertAtCursor(_lineSeparator);
+                _textBufferBackup.InsertAtCursor(destPathOrMsg);
                 _logger.Warn(destPathOrMsg);
                 return;
             }
 
-            var msg = await Backup(destPathOrMsg, fullBackupSwitch.Active);
+            var msg = await Backup(destPathOrMsg, _fullBackupSwitch.Active);
 
-            textBufferBackup.InsertAtCursor(_lineSeparator);
-            textBufferBackup.InsertAtCursor(msg);
+            _textBufferBackup.InsertAtCursor(_lineSeparator);
+            _textBufferBackup.InsertAtCursor(msg);
             _logger.Info(msg);
 
-            btnBackup.Sensitive = true;
-            ToggleBackupSpinner(spinnerBackup);
+            _btnBackup.Sensitive = true;
+            ToggleBackupSpinner(_spinnerBackup);
         }
 
         private (bool, string) GetDestPath()
         {
-            if (string.IsNullOrWhiteSpace(folderChooser.CurrentFolder))
+            if (string.IsNullOrWhiteSpace(_folderChooser.CurrentFolder))
                 return (false, "Please, select a destination folder.");
 
-            if (!Directory.Exists(folderChooser.CurrentFolder) ||
-                !CheckFolderWritePermission(folderChooser.CurrentFolder))
+            if (!Directory.Exists(_folderChooser.CurrentFolder) ||
+                !CheckFolderWritePermission(_folderChooser.CurrentFolder))
                 return (false, "Please, select a existent and writable folder.");
 
-            _logger.Info($"Destination folder: {folderChooser.CurrentFolder}");
+            _logger.Info($"Destination folder: {_folderChooser.CurrentFolder}");
 
-            return (true, folderChooser.CurrentFolder);
+            return (true, _folderChooser.CurrentFolder);
         }
 
         private bool CheckFolderWritePermission(string folderPath)
@@ -173,17 +192,17 @@ namespace EpouNoMore.UI.GTK
             {
                 var backupManager = new BackupManager(destPath);
 
-                textBufferBackup.Text = "Starting..." + Environment.NewLine;
+                _textBufferBackup.Text = "Starting..." + Environment.NewLine;
 
                 void OutputWriter(string data)
                 {
                     RunOnMainThread(Priority.HighIdle, () =>
                     {
-                        var iter = textBufferBackup.EndIter;
-                        textBufferBackup.Insert(ref iter, data);
+                        var iter = _textBufferBackup.EndIter;
+                        _textBufferBackup.Insert(ref iter, data);
 
-                        iter = textBufferBackup.EndIter;
-                        textBufferBackup.Insert(ref iter, Environment.NewLine);
+                        iter = _textBufferBackup.EndIter;
+                        _textBufferBackup.Insert(ref iter, Environment.NewLine);
                     });
                 }
 
