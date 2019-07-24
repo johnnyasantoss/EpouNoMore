@@ -55,7 +55,7 @@ namespace EpouNoMore.Core
                         return false;
                     }
 
-                    MoveContents(tmpPath, _destPath);
+                    MoveContentsToDestination(tmpPath, _destPath);
 
                     return true;
                 });
@@ -67,7 +67,7 @@ namespace EpouNoMore.Core
             }
         }
 
-        private void MoveContents(string tmpPath, string destPath)
+        private void MoveContentsToDestination(string tmpPath, string destPath)
         {
             _logger.Info("Moving contents to destination folder");
 

@@ -6,7 +6,7 @@ using Process = System.Diagnostics.Process;
 
 namespace EpouNoMore.UI.GTK
 {
-    class Program
+    public class Program
     {
         private static Logger<Program> _logger;
 

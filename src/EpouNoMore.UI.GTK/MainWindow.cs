@@ -2,22 +2,19 @@ using System;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
-using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using EpouNoMore.Core;
-using Gdk;
+using EpouNoMore.UI.GTK.Extensions;
+using EpouNoMore.UI.GTK.IO;
 using GLib;
 using Gtk;
-using Mono.Unix.Native;
-using Action = System.Action;
 using Application = Gtk.Application;
 using Thread = System.Threading.Thread;
-using Window = Gtk.Window;
 
 namespace EpouNoMore.UI.GTK
 {
     [SuppressMessage("ReSharper", "FieldCanBeMadeReadOnly.Local")]
-    class MainWindow : Window
+    public class MainWindow : Window
     {
         [Builder.ObjectAttribute] private Button _btnBackup = null;
         [Builder.ObjectAttribute] private Button _btnClearBackup = null;
@@ -28,12 +25,9 @@ namespace EpouNoMore.UI.GTK
         [Builder.ObjectAttribute] private TextView _textViewBackup = null;
 
         private readonly Logger<MainWindow> _logger;
-        private readonly string _lineSeparator;
 
-        /// <summary>
-        /// G_SOURCE_REMOVE: Frees the callback from memory after calling it
-        /// </summary>
-        private const bool GSourceRemove = false;
+        private readonly string _lineSeparator = string.Join(string.Empty, Enumerable.Repeat("-", 50)) +
+                                                 Environment.NewLine;
 
         public MainWindow() : this(new Builder("MainWindow.glade"))
         {
@@ -49,28 +43,73 @@ namespace EpouNoMore.UI.GTK
 
             SetDefaultFolderBackup();
 
+            SubscribeToEvents();
+        }
+
+        private void BtnClearBackupClicked(object sender, EventArgs e)
+        {
+            ResetTextBufferBackup();
+        }
+
+        private void Window_DeleteEvent(object sender, DeleteEventArgs a)
+        {
+            Application.Quit();
+        }
+
+        private async void BtnBackupClicked(object sender, EventArgs a)
+        {
+            _btnBackup.Sensitive = false;
+            ToggleBackupSpinner(_spinnerBackup);
+
+            var (isValid, destPathOrMsg) = GetDestPathFromFolderChooser();
+
+            if (!isValid)
+            {
+                _textBufferBackup.InsertAtCursor(_lineSeparator);
+                _textBufferBackup.InsertAtCursor(destPathOrMsg);
+                _logger.Warn(destPathOrMsg);
+                return;
+            }
+
+            var msg = await Backup(destPathOrMsg, _fullBackupSwitch.Active);
+
+            _textBufferBackup.InsertAtCursor(_lineSeparator);
+            _textBufferBackup.InsertAtCursor(msg);
+            _logger.Info(msg);
+
+            _btnBackup.Sensitive = true;
+            ToggleBackupSpinner(_spinnerBackup);
+        }
+
+        private void OnTextBufferBackupOnInsertText(object o, InsertTextArgs args)
+        {
+            ScrollToEnd(_textViewBackup, _textBufferBackup);
+        }
+
+        private void SubscribeToEvents()
+        {
             _btnBackup.Clicked += BtnBackupClicked;
             _btnClearBackup.Clicked += BtnClearBackupClicked;
 
             DeleteEvent += Window_DeleteEvent;
-            _lineSeparator = string.Join(string.Empty, Enumerable.Repeat("-", 50)) +
-                             Environment.NewLine;
 
-            _textBufferBackup.InsertText += delegate
-            {
-                RunOnMainThread(
-                    Priority.HighIdle
-                    , () =>
-                    {
-                        _textViewBackup.ScrollToMark(
-                            _textBufferBackup.InsertMark
-                            , 0
-                            , true
-                            , 0
-                            , 1
-                        );
-                    });
-            };
+            _textBufferBackup.InsertText += OnTextBufferBackupOnInsertText;
+        }
+
+        private void ScrollToEnd(TextView textView, TextBuffer textBuffer)
+        {
+            this.RunOnMainThread(
+                Priority.HighIdle
+                , () =>
+                {
+                    textView.ScrollToMark(
+                        textBuffer.InsertMark
+                        , 0
+                        , true
+                        , 0
+                        , 1
+                    );
+                });
         }
 
         private void SetDefaultFolderBackup()
@@ -91,11 +130,6 @@ namespace EpouNoMore.UI.GTK
             }
         }
 
-        private void BtnClearBackupClicked(object sender, EventArgs e)
-        {
-            ResetTextBufferBackup();
-        }
-
         private void ResetTextBufferBackup()
         {
             _logger.Info("Cleaning backup text view...");
@@ -103,85 +137,18 @@ namespace EpouNoMore.UI.GTK
             _textBufferBackup.Text = "Waiting for your backup..." + Environment.NewLine;
         }
 
-        private void Window_DeleteEvent(object sender, DeleteEventArgs a)
-        {
-            Application.Quit();
-        }
-
-        private async void BtnBackupClicked(object sender, EventArgs a)
-        {
-            _btnBackup.Sensitive = false;
-            ToggleBackupSpinner(_spinnerBackup);
-
-            var (isValid, destPathOrMsg) = GetDestPath();
-
-            if (!isValid)
-            {
-                _textBufferBackup.InsertAtCursor(_lineSeparator);
-                _textBufferBackup.InsertAtCursor(destPathOrMsg);
-                _logger.Warn(destPathOrMsg);
-                return;
-            }
-
-            var msg = await Backup(destPathOrMsg, _fullBackupSwitch.Active);
-
-            _textBufferBackup.InsertAtCursor(_lineSeparator);
-            _textBufferBackup.InsertAtCursor(msg);
-            _logger.Info(msg);
-
-            _btnBackup.Sensitive = true;
-            ToggleBackupSpinner(_spinnerBackup);
-        }
-
-        private (bool, string) GetDestPath()
+        private (bool, string) GetDestPathFromFolderChooser()
         {
             if (string.IsNullOrWhiteSpace(_folderChooser.CurrentFolder))
                 return (false, "Please, select a destination folder.");
 
-            if (!Directory.Exists(_folderChooser.CurrentFolder) ||
-                !CheckFolderWritePermission(_folderChooser.CurrentFolder))
+            var dirPerm = new DirectoryPermissionManager(_folderChooser.CurrentFolder);
+            if (!Directory.Exists(_folderChooser.CurrentFolder) || !dirPerm.HasWritePermission())
                 return (false, "Please, select a existent and writable folder.");
 
             _logger.Info($"Destination folder: {_folderChooser.CurrentFolder}");
 
             return (true, _folderChooser.CurrentFolder);
-        }
-
-        private bool CheckFolderWritePermission(string folderPath)
-        {
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            {
-                //TODO: Change to actually verify the permissions
-                try
-                {
-                    var testFile = System.IO.Path.Combine(folderPath, "testfile");
-                    File.OpenWrite(testFile).Dispose();
-                    File.Delete(testFile);
-                    return true;
-                }
-                catch (UnauthorizedAccessException)
-                {
-                    return false;
-                }
-            }
-
-            if (Syscall.stat(folderPath, out var stat) < 0)
-            {
-                return false;
-            }
-
-            var hasWrite = stat.st_mode & (FilePermissions.S_IWUSR | FilePermissions.S_IWGRP);
-
-            return hasWrite != 0;
-        }
-
-        private void RunOnMainThread(Priority priority, Action action)
-        {
-            Threads.AddIdle((int) priority, () =>
-            {
-                action();
-                return GSourceRemove;
-            });
         }
 
         private Task<string> Backup(string destPath, bool fullBackup)
@@ -194,28 +161,14 @@ namespace EpouNoMore.UI.GTK
 
                 _textBufferBackup.Text = "Starting..." + Environment.NewLine;
 
-                void OutputWriter(string data)
-                {
-                    RunOnMainThread(Priority.HighIdle, () =>
-                    {
-                        var iter = _textBufferBackup.EndIter;
-                        _textBufferBackup.Insert(ref iter, data);
-
-                        iter = _textBufferBackup.EndIter;
-                        _textBufferBackup.Insert(ref iter, Environment.NewLine);
-                    });
-                }
-
-                var procTask = backupManager.Start(OutputWriter, fullBackup)
+                var success = await backupManager.Start(AppendToTextBuffer, fullBackup)
                     .ConfigureAwait(false);
-
-                var success = await procTask;
 
                 var msg = success
                     ? $"Backup completed! \"file://{destPath}\""
                     : "Failed!";
 
-                tcs.SetResult(msg);
+                tcs.SetResult(msg + Environment.NewLine);
             }
 
             var t = new Thread(StartBackup)
@@ -226,6 +179,18 @@ namespace EpouNoMore.UI.GTK
             t.Start();
 
             return tcs.Task;
+        }
+
+        private void AppendToTextBuffer(string data)
+        {
+            this.RunOnMainThread(Priority.HighIdle, () =>
+            {
+                var iter = _textBufferBackup.EndIter;
+                _textBufferBackup.Insert(ref iter, data);
+
+                iter = _textBufferBackup.EndIter;
+                _textBufferBackup.Insert(ref iter, Environment.NewLine);
+            });
         }
 
         private void ToggleBackupSpinner(Spinner spinner)
