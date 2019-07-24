@@ -1,6 +1,6 @@
 ﻿using System;
-using System.Diagnostics;
 using System.IO;
+using System.Threading.Tasks;
 using EpouNoMore.Core.Internal;
 
 namespace EpouNoMore.Core
@@ -8,57 +8,68 @@ namespace EpouNoMore.Core
     public class BackupManager
     {
         private readonly string _destPath;
+        private readonly Logger<BackupManager> _logger;
 
         public BackupManager(string destPath)
         {
             _destPath = destPath;
+            _logger = new Logger<BackupManager>();
         }
 
-        public bool Start(bool fullBackup = true)
+        public Task<bool> Start(Action<string> outputReader, bool fullBackup = true)
         {
             // uses a tmp dir because its faster on tmpfs
             var tmpPath = IOUtility.GetRandomTempPath();
 
             try
             {
-                Debug.WriteLine($"Creating temp directory on {tmpPath}", nameof(BackupManager));
-                Directory.CreateDirectory(tmpPath);
+                _logger.Info($"Creating temp directory on {tmpPath}");
+                var d = Directory.CreateDirectory(tmpPath);
+                if (!d.Exists)
+                {
+                    _logger.Error("Failed to create temp dir");
+                    d.Create();
+                }
 
                 //TODO: Needs pairing
-                Debug.WriteLine("Starting backup", nameof(BackupManager));
+                _logger.Info("Starting backup");
                 var exitCode = ProcessUtility.Instance.StartAndRunCommand(
-                    "idevicebackup2",
-                    "backup",
+                    outputReader
+                    , "idevicebackup2"
                     //TODO: Create a manager for idevice to handle this
-                    fullBackup ? "--full" : "",
-                    tmpPath
+                    , "backup"
+                    , fullBackup ? "--full" : ""
+                    , tmpPath
                 );
-                Debug.WriteLine("Backup completed", nameof(BackupManager));
 
                 //TODO: Check the exit codes
-                if (exitCode == 0)
+                //TODO: Better error handling
+                return exitCode.ContinueWith(t =>
                 {
+                    _logger.Info("Backup completed");
+
+                    if (t.Status != TaskStatus.RanToCompletion || t.Result != 0)
+                    {
+                        if (Directory.Exists(tmpPath))
+                            Directory.Delete(tmpPath, true);
+                        return false;
+                    }
+
                     MoveContents(tmpPath, _destPath);
+
                     return true;
-                }
+                });
             }
             catch (Exception e)
             {
-                Debug.WriteLine($"Error on backup.\n{e.Message}", nameof(BackupManager));
+                _logger.Error($"Error on backup.\n{e.Message}");
+                return Task.FromResult(false);
             }
-            finally
-            {
-                if (Directory.Exists(tmpPath))
-                    Directory.Delete(tmpPath, true);
-            }
-
-            //TODO: Better error handling
-            return false;
         }
 
         private void MoveContents(string tmpPath, string destPath)
         {
-            Debug.WriteLine("Moving contents", nameof(BackupManager));
+            _logger.Info("Moving contents to destination folder");
 
             var tmpInfo = new DirectoryInfo(tmpPath);
 

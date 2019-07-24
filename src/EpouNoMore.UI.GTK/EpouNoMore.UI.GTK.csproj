@@ -1,29 +1,25 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <OutputType>WinExe</OutputType>
-    <TargetFramework>netcoreapp2.2</TargetFramework>
-  </PropertyGroup>
+    <PropertyGroup>
+        <OutputType>WinExe</OutputType>
+        <TargetFramework>netcoreapp2.2</TargetFramework>
+        <LangVersion>Latest</LangVersion>
+    </PropertyGroup>
 
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
-    <LangVersion>Latest</LangVersion>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
-    <LangVersion>Latest</LangVersion>
-  </PropertyGroup>
-  <ItemGroup>
-    <None Remove="**\*.glade" />
-    <EmbeddedResource Include="**\*.glade">
-      <LogicalName>%(Filename)%(Extension)</LogicalName>
-    </EmbeddedResource>
-  </ItemGroup>
+    <ItemGroup>
+        <None Remove="**\*.glade" />
+        <EmbeddedResource Include="**\*.glade">
+            <LogicalName>%(Filename)%(Extension)</LogicalName>
+        </EmbeddedResource>
+    </ItemGroup>
 
-  <ItemGroup>
-    <PackageReference Include="GtkSharp" Version="3.22.24.37" />
-  </ItemGroup>
+    <ItemGroup>
+        <PackageReference Include="GtkSharp" Version="3.22.24.37" />
+        <PackageReference Include="Nito.AsyncEx" Version="5.0.0" />
+    </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\EpouNoMore.Core\EpouNoMore.Core.csproj" />
-  </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="..\EpouNoMore.Core\EpouNoMore.Core.csproj" />
+    </ItemGroup>
 
 </Project>

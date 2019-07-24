@@ -1,23 +1,36 @@
 using System;
-using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
-using System.Threading;
 using System.Threading.Tasks;
 using EpouNoMore.Core;
+using Gdk;
+using GLib;
 using Gtk;
 using Mono.Unix.Native;
-using Switch = Gtk.Switch;
+using Action = System.Action;
+using Application = Gtk.Application;
+using Thread = System.Threading.Thread;
+using Window = Gtk.Window;
 
 namespace EpouNoMore.UI.GTK
 {
     class MainWindow : Window
     {
-        [Builder.ObjectAttribute] private Label lblBackupMain = null;
         [Builder.ObjectAttribute] private Button btnBackup = null;
+        [Builder.ObjectAttribute] private Button btnClearBackup = null;
         [Builder.ObjectAttribute] private Spinner spinnerBackup = null;
         [Builder.ObjectAttribute] private Switch fullBackupSwitch = null;
         [Builder.ObjectAttribute] private FileChooserButton folderChooser = null;
+        [Builder.ObjectAttribute] private TextBuffer textBufferBackup = null;
+
+        private readonly Logger<MainWindow> _logger;
+        private readonly string _lineSeparator;
+
+        /// <summary>
+        /// G_SOURCE_REMOVE: Frees the callback from memory after calling it
+        /// </summary>
+        private const bool GSourceRemove = false;
 
         public MainWindow() : this(new Builder("MainWindow.glade"))
         {
@@ -27,11 +40,48 @@ namespace EpouNoMore.UI.GTK
         {
             builder.Autoconnect(this);
 
-            var defaultBackupFolder = System.IO.Path.Combine(Directory.GetCurrentDirectory(), "Backup");
-            folderChooser.SetCurrentFolder(defaultBackupFolder);
+            _logger = new Logger<MainWindow>();
+
+            Title = "EpouNoMore";
+
+            SetDefaultFolderBackup();
+
+            btnBackup.Clicked += BtnBackupClicked;
+            btnClearBackup.Clicked += BtnClearBackupClicked;
 
             DeleteEvent += Window_DeleteEvent;
-            btnBackup.Clicked += BtnBackupClicked;
+            _lineSeparator = string.Join(string.Empty, Enumerable.Repeat("-", 50)) +
+                             Environment.NewLine;
+        }
+
+        private void SetDefaultFolderBackup()
+        {
+            var defaultBackupFolder = System.IO.Path.Combine(Directory.GetCurrentDirectory(), "Backup");
+
+            try
+            {
+                if (!Directory.Exists(defaultBackupFolder))
+                    Directory.CreateDirectory(defaultBackupFolder);
+
+                folderChooser.SetCurrentFolder(defaultBackupFolder);
+            }
+            catch (Exception e)
+            {
+                _logger.Warn("Failed to create a default directory on \"{defaultBackupFolder}\"");
+                _logger.Warn(e.Message);
+            }
+        }
+
+        private void BtnClearBackupClicked(object sender, EventArgs e)
+        {
+            ResetTextBufferBackup();
+        }
+
+        private void ResetTextBufferBackup()
+        {
+            _logger.Info("Cleaning backup text view...");
+            textBufferBackup.Clear();
+            textBufferBackup.Text = "Waiting for your backup..." + Environment.NewLine;
         }
 
         private void Window_DeleteEvent(object sender, DeleteEventArgs a)
@@ -48,13 +98,17 @@ namespace EpouNoMore.UI.GTK
 
             if (!isValid)
             {
-                lblBackupMain.Text = destPathOrMsg;
+                textBufferBackup.InsertAtCursor(_lineSeparator);
+                textBufferBackup.InsertAtCursor(destPathOrMsg);
+                _logger.Warn(destPathOrMsg);
                 return;
             }
 
             var msg = await Backup(destPathOrMsg, fullBackupSwitch.Active);
 
-            lblBackupMain.Text = msg;
+            textBufferBackup.InsertAtCursor(_lineSeparator);
+            textBufferBackup.InsertAtCursor(msg);
+            _logger.Info(msg);
 
             btnBackup.Sensitive = true;
             ToggleBackupSpinner(spinnerBackup);
@@ -69,7 +123,7 @@ namespace EpouNoMore.UI.GTK
                 !CheckFolderWritePermission(folderChooser.CurrentFolder))
                 return (false, "Please, select a existent and writable folder.");
 
-            Debug.WriteLine($"Destination folder: {folderChooser.CurrentFolder}", nameof(MainWindow));
+            _logger.Info($"Destination folder: {folderChooser.CurrentFolder}");
 
             return (true, folderChooser.CurrentFolder);
         }
@@ -102,25 +156,50 @@ namespace EpouNoMore.UI.GTK
             return hasWrite != 0;
         }
 
+        private void RunOnMainThread(Priority priority, Action action)
+        {
+            Threads.AddIdle((int) priority, () =>
+            {
+                action();
+                return GSourceRemove;
+            });
+        }
+
         private Task<string> Backup(string destPath, bool fullBackup)
         {
             var tcs = new TaskCompletionSource<string>();
 
-            var t = new Thread(() =>
+            async void StartBackup()
             {
-                if (tcs.Task.Status == TaskStatus.RanToCompletion)
-                    return;
-
                 var backupManager = new BackupManager(destPath);
 
-                var success = backupManager.Start(fullBackup);
+                textBufferBackup.Text = "Starting..." + Environment.NewLine;
+
+                void OutputWriter(string data)
+                {
+                    RunOnMainThread(Priority.HighIdle, () =>
+                    {
+                        var iter = textBufferBackup.EndIter;
+                        textBufferBackup.Insert(ref iter, data);
+
+                        iter = textBufferBackup.EndIter;
+                        textBufferBackup.Insert(ref iter, Environment.NewLine);
+                    });
+                }
+
+                var procTask = backupManager.Start(OutputWriter, fullBackup)
+                    .ConfigureAwait(false);
+
+                var success = await procTask;
 
                 var msg = success
                     ? $"Backup completed! \"file://{destPath}\""
                     : "Failed!";
 
                 tcs.SetResult(msg);
-            })
+            }
+
+            var t = new Thread(StartBackup)
             {
                 IsBackground = true,
                 Name = "backup-manager"
@@ -137,6 +216,7 @@ namespace EpouNoMore.UI.GTK
                 spinner.Active = true;
                 spinner.Start();
             }
+
             else
             {
                 spinner.Active = false;

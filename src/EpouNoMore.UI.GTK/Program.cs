@@ -1,5 +1,5 @@
 using System;
-using System.Diagnostics;
+using EpouNoMore.Core;
 using GLib;
 using Application = Gtk.Application;
 using Process = System.Diagnostics.Process;
@@ -8,9 +8,13 @@ namespace EpouNoMore.UI.GTK
 {
     class Program
     {
+        private static Logger<Program> _logger;
+
         [STAThread]
         public static void Main(string[] args)
         {
+            _logger = new Logger<Program>();
+
             AppDomain.CurrentDomain.UnhandledException += (_, e) => OnUnhandledException(e);
             ExceptionManager.UnhandledException += OnUnhandledException;
 
@@ -25,8 +29,10 @@ namespace EpouNoMore.UI.GTK
         private static void OnUnhandledException(UnhandledExceptionEventArgs eventArgs)
         {
             var ex = (Exception) eventArgs.ExceptionObject;
-            Debug.WriteLine("Unhandled exception: {0}", ex);
-            Console.WriteLine("Unhandled exception: {0}", ex);
+
+            var msg = $"Unhandled exception: {ex}";
+
+            _logger.Error(msg);
         }
 
         private static void SetupProcess()

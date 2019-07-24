@@ -1,16 +1,13 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <TargetFramework>netstandard2.0</TargetFramework>
-  </PropertyGroup>
+    <PropertyGroup>
+        <TargetFramework>netstandard2.0</TargetFramework>
+        <LangVersion>Latest</LangVersion>
 
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
-    <LangVersion>Latest</LangVersion>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
-    <LangVersion>Latest</LangVersion>
-  </PropertyGroup>
-  <ItemGroup>
-    <PackageReference Include="Mono.Posix.NETStandard" Version="1.0.0" />
-  </ItemGroup>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Mono.Posix.NETStandard" Version="1.0.0" />
+        <PackageReference Include="System.Reactive" Version="4.1.5" />
+    </ItemGroup>
 </Project>

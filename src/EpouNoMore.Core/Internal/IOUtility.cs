@@ -8,7 +8,7 @@ namespace EpouNoMore.Core.Internal
     {
         public static string GetRandomTempPath()
         {
-            return Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+            return Path.Combine(Path.GetTempPath(), "EpouNoMore", Guid.NewGuid().ToString());
         }
     }
 }
