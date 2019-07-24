@@ -4,9 +4,9 @@ namespace EpouNoMore.CLI
 {
     class Program
     {
-        static void Main(string[] args)
+        static void Main()
         {
-            Console.WriteLine("Hello World!");
+            Console.WriteLine("TODO: Use UI for now");
         }
     }
 }
